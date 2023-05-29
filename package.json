@@ -9,7 +9,9 @@
     "deploy:prod": "npm run build && npx serverless@2.7.0 deploy -s prod",
     "deploy:dev": "npm run build && npx serverless@2.7.0 deploy -s dev",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "dev:packager": "cross-env LOCAL=true nodemon dist/packager",
+    "dev:api": "cross-env LOCAL=true nodemon dist/api/server.js"
   },
   "dependencies": {
     "@babel/core": "^7.3.4",
@@ -29,7 +31,8 @@
     "mz": "^2.7.0",
     "node-fetch": "^2.6.0",
     "npm-package-arg": "^6.0.0",
-    "pacote": "^6.0.2",
+    "pacote": "^13.6.1",
+    "cross-env": "^7.0.3",
     "raven": "^2.2.1",
     "recursive-readdir": "^2.2.2",
     "recursive-readdir-sync": "^1.0.6",
@@ -37,7 +40,9 @@
     "semver": "^5.4.1",
     "string-hash": "^1.1.3",
     "yarn": "^1.22.17",
-    "zlib": "^1.0.5"
+    "zlib": "^1.0.5",
+    "cors": "^2.8.5",
+    "cos-nodejs-sdk-v5": "^2.11.12"
   },
   "devDependencies": {
     "@types/acorn": "^4.0.2",

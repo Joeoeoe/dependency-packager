@@ -1,5 +1,7 @@
 import * as npa from "npm-package-arg";
 import * as pacote from "pacote";
+const { REGISTRY } = process.env;
+
 
 /**
  * Gets the absolute versions of all dependencies
@@ -23,7 +25,10 @@ async function getAbsoluteVersions(dependencies: IDependencies) {
       }
 
       try {
-        const manifest = await pacote.manifest(depString);
+        const manifest = await pacote.manifest(depString, {
+          // TODO:blog 设置私有npm源
+          registry: REGISTRY ?? 'https://registry.npm.taobao.org'
+        });
 
         const absoluteVersion = manifest.version;
 

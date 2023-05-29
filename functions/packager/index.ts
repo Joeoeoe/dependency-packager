@@ -1,5 +1,6 @@
 import { Callback, Context } from "aws-lambda";
-import { S3 } from "aws-sdk";
+// import { S3 } from "aws-sdk";
+import * as COS from 'cos-nodejs-sdk-v5';
 
 import { fs } from "mz";
 import * as path from "path";
@@ -17,19 +18,24 @@ import findRequires, { IFileData } from "./packages/find-requires";
 import getHash from "./utils/get-hash";
 
 import { VERSION } from "../config";
-import env from "./config.secret";
+// import env from "./config.secret";
 import resolve = require("resolve");
 import { packageFilter } from "./utils/resolver";
 import { execSync } from "child_process";
 
-const { BUCKET_NAME } = process.env;
+const { BUCKET_NAME, SECRET_ID, SECRET_KEY } = process.env;
 const SAVE_TO_S3 = !process.env.DISABLE_CACHING;
 
-if (env.SENTRY_URL) {
-  Raven.config(env.SENTRY_URL!).install();
-}
+// if (env.SENTRY_URL) {
+//   Raven.config(env.SENTRY_URL!).install();
+// }
 
-const s3 = new S3();
+// TODO:blog 对象存储配置
+const cos = new COS({
+  'SecretId': SECRET_ID,
+  'SecretKey': SECRET_KEY
+});
+
 
 /**
  * Remove a file from the content
@@ -60,7 +66,8 @@ function saveToS3(
   }
 
   console.log(`Saving ${dependency} to S3`);
-  s3.putObject(
+  // TODO:blog 根据对象存储sdk调整参数
+  cos.putObject(
     {
       Body: zlib.gzipSync(JSON.stringify(response)),
       Bucket: BUCKET_NAME,
@@ -69,6 +76,7 @@ function saveToS3(
       ContentType: "application/json",
       CacheControl: "public, max-age=31536000",
       ContentEncoding: "gzip",
+      Region:'ap-guangzhou',
     },
     (err) => {
       if (err) {
@@ -242,9 +250,9 @@ export async function call(event: any, context: Context, cb: Callback) {
       ),
     };
 
-    if (process.env.IN_LAMBDA) {
+    // if (process.env.IN_LAMBDA) {
       saveToS3(dependency, response);
-    }
+    // }
 
     // Cleanup
     try {
@@ -270,7 +278,6 @@ export async function call(event: any, context: Context, cb: Callback) {
         dependency: `${dependency.name}@${dependency.version}`,
       },
     });
-
     if (process.env.IN_LAMBDA) {
       // We try to call fly, which is a service with much more disk space, retry with this.
       try {
@@ -282,9 +289,9 @@ export async function call(event: any, context: Context, cb: Callback) {
           throw new Error(responseFromFly.error);
         }
 
-        if (process.env.IN_LAMBDA) {
+        // if (process.env.IN_LAMBDA) {
           saveToS3(dependency, responseFromFly);
-        }
+        // }
 
         cb(undefined, responseFromFly);
       } catch (ee) {
@@ -299,7 +306,7 @@ export async function call(event: any, context: Context, cb: Callback) {
   }
 }
 
-const PORT = process.env.PORT || 4545;
+const PORT = process.env.PORT || 3003;
 if (!process.env.IN_LAMBDA) {
   /* tslint:disable no-var-requires */
   const express = require("express");

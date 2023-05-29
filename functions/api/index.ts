@@ -2,10 +2,12 @@ import { Callback, Context } from "aws-lambda";
 import * as aws from "aws-sdk";
 import * as LRU from "lru-cache";
 import * as zlib from "zlib";
-
+import * as COS from 'cos-nodejs-sdk-v5';
 import { VERSION } from "../config";
-
 import parseDependencies from "./dependencies/parse-dependencies";
+import fetch from "node-fetch";
+const { BUCKET_NAME, SECRET_ID, SECRET_KEY } = process.env;
+
 
 const errorCache: LRU.Cache<string, string> = LRU({
   max: 1024,
@@ -50,28 +52,35 @@ const lambda = new aws.Lambda({
   region: "eu-west-1",
 });
 
-const s3 = new aws.S3();
-const { BUCKET_NAME } = process.env;
+// TODO:blog 对象存储配置，根据自己的对象存储服务调整
+// const s3 = new aws.S3();
+const cos = new COS({
+  'SecretId': SECRET_ID,
+  'SecretKey': SECRET_KEY,
+})
 
 function getFileFromS3(
   keyPath: string,
-): Promise<aws.S3.GetObjectOutput | null> {
+  // TODO:blog 返回类型使用对应的对象存储sdk类型，这里使用了腾讯云的COS服务
+): Promise<COS.GetObjectResult | null> {
   return new Promise((resolve, reject) => {
     if (!BUCKET_NAME) {
       reject("No BUCKET_NAME provided");
       return;
     }
 
-    s3.getObject(
+    // TODO:blog 根据对象存储sdk调整参数
+    cos.getObject(
       {
         Bucket: BUCKET_NAME,
         Key: keyPath,
+        Region:'ap-guangzhou'
       },
       (err, packageData) => {
-        if (err && err.name !== "AccessDenied") {
+        if (err && err.code !== "AccessDenied") {
+          console.log('getFileFromS3 error: ');
           console.error(err);
-          reject(err);
-          return;
+          resolve(null);
         }
 
         resolve(packageData);
@@ -90,8 +99,8 @@ function saveFileToS3(
       reject("No BUCKET_NAME provided");
       return;
     }
-
-    s3.putObject(
+    // TODO:blog 根据对象存储sdk调整参数
+    cos.putObject(
       {
         Bucket: BUCKET_NAME,
         Key: keyPath, // don't allow slashes
@@ -99,6 +108,7 @@ function saveFileToS3(
         ContentType: contentType,
         CacheControl: "public, max-age=31536000",
         ContentEncoding: "gzip",
+        Region:'ap-guangzhou'
       },
       (err, response) => {
         if (err) {
@@ -135,29 +145,50 @@ function generateDependency(
   version: string,
 ): Promise<{ error: string } | ILambdaResponse | null> {
   return new Promise((resolve, reject) => {
-    lambda.invoke(
-      {
-        FunctionName: `codesandbox-packager-v2-${process.env.SERVERLESS_STAGE}-packager`,
-        Payload: JSON.stringify({
-          name,
-          version,
-        }),
-      },
-      (error, data) => {
-        if (error) {
-          error.message = `Error while packaging ${name}@${version}: ${error.message}`;
 
-          reject(error);
-          return;
-        }
+    // TODO:blog codesandbox原本使用serverless去访问packager服务，我们改写为访问对应的docker服务
+    // 注意host名称及端口需与启动容器名称端口一致
+    fetch(`http://packager-container:3003/${name}@${version}`)
+    .then(res=> res.json())
+    .then(data=>{
+      if (typeof data === "object") {
+        resolve(data);
+      } else {
+        resolve(null);
+      }
+    }).catch(error =>{
+      if (error) {
+        console.log(error)
+        error.message = `Error while packaging ${name}@${version}: ${error.message}`;
 
-        if (typeof data.Payload === "string") {
-          resolve(JSON.parse(data.Payload));
-        } else {
-          resolve(null);
-        }
-      },
-    );
+        reject(error);
+        return;
+      }
+    });
+
+    // lambda.invoke(
+    //   {
+    //     FunctionName: `codesandbox-packager-v2-${process.env.SERVERLESS_STAGE}-packager`,
+    //     Payload: JSON.stringify({
+    //       name,
+    //       version,
+    //     }),
+    //   },
+    //   (error, data) => {
+    //     if (error) {
+    //       error.message = `Error while packaging ${name}@${version}: ${error.message}`;
+
+    //       reject(error);
+    //       return;
+    //     }
+
+    //     if (typeof data.Payload === "string") {
+    //       resolve(JSON.parse(data.Payload));
+    //     } else {
+    //       resolve(null);
+    //     }
+    //   },
+    // );
   });
 }
 
@@ -186,7 +217,6 @@ export async function http(event: any, context: Context, cb: Callback) {
     const { packages } = event.pathParameters;
     const escapedPackages = decodeURIComponent(packages);
     const dependencies = await parseDependencies(escapedPackages);
-
     const receivedData: ILambdaResponse[] = [];
 
     if (!BUCKET_NAME) {

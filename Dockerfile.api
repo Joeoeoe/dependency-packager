@@ -1,0 +1,19 @@
+FROM node:current-alpine
+
+RUN apk add git
+
+WORKDIR /app
+COPY package.json .
+COPY yarn.lock .
+
+# TODO:blog 设置私有npm源
+RUN npm config set registry https://registry.npm.taobao.org
+RUN yarn config set registry https://registry.npm.taobao.org
+
+RUN yarn install
+
+ADD . .
+
+RUN yarn build
+
+CMD node dist/api/server.js
